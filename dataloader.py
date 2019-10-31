@@ -32,7 +32,10 @@ class HeadlineDataset(Dataset):
         word_vectors = []
         for word in headline.split():
             word_vectors.append(self.glove_embeddings.get(word, self.glove_embeddings['<UNK>']))
-        return torch.stack(word_vectors)
+        return {
+            'edited_headline_embedding': torch.stack(word_vectors),
+            'label': float(self.rows[idx]['meanGrade'])
+        }
 
 
 def DataLoader(dataset, batch_size, shuffle=True):
@@ -42,8 +45,9 @@ def DataLoader(dataset, batch_size, shuffle=True):
     for i in range((len(dataset) + batch_size - 1) // batch_size):
         batch_indices = indices[i*batch_size: (i+1)*batch_size]
         batch = [dataset[x] for x in batch_indices]
-        batch = torch.nn.utils.rnn.pack_sequence(batch, enforce_sorted=False)
-        yield batch
+        xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
+        ys = torch.Tensor([x['label'] for x in batch])
+        yield xs, ys
 
 
 if __name__ == '__main__':
