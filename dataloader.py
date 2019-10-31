@@ -32,7 +32,10 @@ class HeadlineDataset(Dataset):
         word_vectors = []
         for word in headline.split():
             word_vectors.append(self.glove_embeddings.get(word, '<OOV>'))
+        return torch.stack(word_vectors)
+        """
         return {
             'edited_headline': self.get_edited_text(self.rows[idx]),
             'edited_headline_embedding': word_vectors
         }
+        """
