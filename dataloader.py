@@ -34,21 +34,30 @@ class HeadlineDataset(Dataset):
             word_vectors.append(self.glove_embeddings.get(word, self.glove_embeddings['<UNK>']))
         res = {
             'id': self.rows[idx]['id'],
-            'edited_headline_embedding': torch.stack(word_vectors),
+            'edited_headline_embedding': torch.stack(word_vectors)
         }
         if 'meanGrade' in self.rows[idx]:
             res['label'] = float(self.rows[idx]['meanGrade'])
+            res['5bin-label'] = int(self.rows[idx]['5bin-label']),
+            res['10bin-label'] = int(self.rows[idx]['10bin-label'])
         return res
 
 
-def DataLoader(dataset, batch_size=None, shuffle=True, predict=False, pad_or_pack='pad'):
+def DataLoader(dataset, batch_size=None, shuffle=True, predict=False, pad_or_pack='pad', task='regression'):
     def prepare_batch(batch):
         if pad_or_pack == 'pack':
             xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
         else:  # pad
             xs = torch.nn.utils.rnn.pad_sequence([x['edited_headline_embedding'] for x in batch])
         if not predict:
-            ys = torch.Tensor([x['label'] for x in batch])
+            if task == 'regression':
+                ys = torch.Tensor([x['label'] for x in batch])
+            elif task == '5-classification':
+                ys = torch.LongTensor([x['5bin-label'] for x in batch])
+            elif task == '10-classification':
+                ys = torch.LongTensor([x['10bin-label'] for x in batch])
+            else:
+                raise ValueError("Invalid task")
         else:
             ys = None
         return xs, ys
