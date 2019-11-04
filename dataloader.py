@@ -38,8 +38,9 @@ class HeadlineDataset(Dataset):
         }
         if 'meanGrade' in self.rows[idx]:
             res['label'] = float(self.rows[idx]['meanGrade'])
-            res['5bin-label'] = int(self.rows[idx]['5bin-label']),
-            res['10bin-label'] = int(self.rows[idx]['10bin-label'])
+            for k, v in self.rows[idx].items():
+                if k.endswith('bin-label'):
+                    res[k] = v
         return res
 
 
@@ -56,8 +57,9 @@ def DataLoader(dataset, batch_size=None, shuffle=True, predict=False, pad_or_pac
                 ys = torch.LongTensor([x['5bin-label'] for x in batch]).squeeze()
             elif task == '10-classification':
                 ys = torch.LongTensor([x['10bin-label'] for x in batch]).squeeze()
-            else:
-                raise ValueError("Invalid task")
+            elif task.endswith('classification'):
+                n_bins = task.split('-')[0]
+                ys = torch.LongTensor([x[f'{n_bins}bin-label'] for x in batch]).squeeze()
         else:
             ys = None
         return xs, ys

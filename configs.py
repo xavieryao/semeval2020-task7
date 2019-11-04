@@ -22,10 +22,26 @@ larger_lstm = {
     'task': 'regression'
 }
 
+larger_lstm_5bin = {
+    'hidden': 128,
+    'linear': 128,
+    'dropout': 0.5,
+    'norm': False,
+    'task': '5-classification'
+}
+
 original_lstm_5bin = {
     'hidden': 16,
     'dropout': 0.5,
     'linear': 64,
     'norm': False,
     'task': '5-classification'
+}
+
+original_lstm_3bin = {
+    'hidden': 16,
+    'dropout': 0.5,
+    'linear': 64,
+    'norm': False,
+    'task': '3-classification'
 }
