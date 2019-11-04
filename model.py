@@ -1,6 +1,8 @@
 from torch import nn
 from torch.nn import functional as F
 import torch
+from torch.utils.tensorboard import SummaryWriter
+
 
 
 class RMSELoss(torch.nn.Module):
@@ -33,8 +35,17 @@ class LSTMBaselineModel(nn.Module):
         x = 4 * torch.sigmoid(x)  # normalize it to [0, 4]
         return x.squeeze()
 
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path):
+        self.load_state_dict(torch.load(path))
+
 
 def train():
+    train_writer = SummaryWriter('runs/simple_lstm_exp_1_train')
+    dev_writer = SummaryWriter('runs/simple_lstm_exp_1_dev')
+
     from dataloader import DataLoader, HeadlineDataset
     print('Loading data')
     train_dataset = HeadlineDataset('training')
@@ -65,6 +76,8 @@ def train():
             if i % 20 == 19:  # print every 2000 mini-batches
                 print('[%d, %5d]     loss: %.6f' %
                       (epoch + 1, i + 1, running_loss / 20))
+                train_writer.add_scalar('epoch', epoch + 1, epoch * len(train_dataset) + i)
+                train_writer.add_scalar('loss', running_loss / 20, epoch * len(train_dataset) + i)
                 running_loss = 0.0
             if i % 50 == 49:  # validate
                 dev_loader = DataLoader(dev_dataset)
@@ -72,7 +85,11 @@ def train():
                 val_outputs = net(dev_xs)
                 val_loss = criterion(val_outputs, dev_ys)
                 print('[%d, %5d] val loss: %.6f' % (epoch + 1, i + 1, val_loss))
-
+                dev_writer.add_scalar('loss', val_loss, epoch * len(train_dataset) + i)
+        # save checkpoint
+        net.save("checkpoints/{}.pyt".format(epoch+1))
+    train_writer.close()
+    dev_writer.close()
     print('Finished Training')
 
 
