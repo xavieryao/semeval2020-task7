@@ -45,6 +45,9 @@ class LSTMWithStepwiseDropout(nn.Module):
             _, (h, _) = self.lstm(x)
             return h
 
+    def extra_repr(self) -> str:
+        return f"input_size={self.input_size}, hidden_size={self.hidden_size}, dropout={self.dropout}"
+
 
 class SavableModel(nn.Module):
     def __init__(self):
@@ -90,6 +93,7 @@ def train(config):
     dev_dataset = HeadlineDataset('dev')
 
     net = LSTMBaselineModel(config)
+    print(net)
     criterion = RMSELoss()
     optimizer = torch.optim.Adam(net.parameters())
 
@@ -158,7 +162,7 @@ def predict(config):
 
 
 if __name__ == '__main__':
-    config = larger_lstm
+    config = original_lstm_with_norm
     import shutil
     try:
         shutil.rmtree('runs')
