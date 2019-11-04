@@ -5,6 +5,7 @@ from torch.utils.tensorboard import SummaryWriter
 from dataloader import DataLoader, HeadlineDataset
 import subprocess
 import os
+from configs import *
 
 
 class RMSELoss(torch.nn.Module):
@@ -48,19 +49,23 @@ class SavableModel(nn.Module):
 
 
 class LSTMBaselineModel(SavableModel):
-    def __init__(self, config={}):
+    def __init__(self, config=None):
         super().__init__()
         self.config = config
-        self.lstm = LSTMWithDropout(input_size=300, hidden_size=16, dropout=0.5)
-        self.linear1 = nn.Linear(16, 64)
-        self.linear2 = nn.Linear(64, 1)
+        self.lstm = LSTMWithDropout(input_size=300, hidden_size=config['hidden'], dropout=config['dropout'])
+        self.lstm_norm = nn.BatchNorm1d(config['hidden'])
+        self.linear1 = nn.Linear(config['hidden'], config['linear'])
+        self.linear_norm = nn.BatchNorm1d(config['linear'])
+        self.linear2 = nn.Linear(config['linear'], 1)
 
     def forward(self, x, training=True):
         x = self.lstm(x, training=training)  # take the last hidden state
         x = x.squeeze()
+        x = self.lstm_norm(x)
         x = self.linear1(x)
         x = F.relu(x)
-        x = F.dropout(x, 0.5, training=training)
+        x = F.dropout(x, self.config['dropout'], training=training)
+        x = self.linear_norm(x)
 
         # predict the score
         x = self.linear2(x)
@@ -76,14 +81,13 @@ def train():
     train_dataset = HeadlineDataset('training')
     dev_dataset = HeadlineDataset('dev')
 
-    net = LSTMBaselineModel()
+    net = LSTMBaselineModel(larger_lstm)
     criterion = RMSELoss()
     optimizer = torch.optim.Adam(net.parameters())
 
     for epoch in range(30):  # loop over the dataset multiple times
         running_loss = 0.0
         trainloader = DataLoader(train_dataset, 8)
-        num_batches = len(train_dataset) // 8
         for i, data in enumerate(trainloader):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
@@ -125,8 +129,8 @@ def predict():
     from csv import writer
     test_dataset = HeadlineDataset('test')
     test_loader = DataLoader(test_dataset, shuffle=False, predict=True)
-    net = LSTMBaselineModel()
-    net.load('checkpoints/6.pyt')
+    net = LSTMBaselineModel(larger_lstm)
+    net.load('checkpoints/7.pyt')
     xs, _ = next(test_loader)
     y_pred = net(xs, training=False)
     with open('data/task-1-output.csv', 'w') as f:
