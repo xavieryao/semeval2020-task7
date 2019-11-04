@@ -77,7 +77,7 @@ class LSTMBaselineModel(SavableModel):
 
         # predict the score
         x = self.linear2(x)
-        x = 4 * torch.sigmoid(x)  # normalize it to [0, 4]
+        x = 3 * torch.sigmoid(x)  # normalize it to [0, 3]
         return x.squeeze()
 
 
