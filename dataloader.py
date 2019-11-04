@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 
 class HeadlineDataset(Dataset):
     def __init__(self, dataset='training'):
-        assert dataset in ('training', 'dev')
+        assert dataset in ('training', 'dev', 'test')
         self.dataset = dataset
         dataset_path = f'data/{dataset}.csv'
         with open(dataset_path) as f:
@@ -32,13 +32,16 @@ class HeadlineDataset(Dataset):
         word_vectors = []
         for word in headline.split():
             word_vectors.append(self.glove_embeddings.get(word, self.glove_embeddings['<UNK>']))
-        return {
+        res = {
+            'id': self.rows[idx]['id'],
             'edited_headline_embedding': torch.stack(word_vectors),
-            'label': float(self.rows[idx]['meanGrade'])
         }
+        if 'meanGrade' in self.rows[idx]:
+            res['label'] = float(self.rows[idx]['meanGrade'])
+        return res
 
 
-def DataLoader(dataset, batch_size=None, shuffle=True):
+def DataLoader(dataset, batch_size=None, shuffle=True, predict=False):
     indices = list(range(len(dataset)))
     if shuffle:
         random.shuffle(indices)
@@ -47,12 +50,18 @@ def DataLoader(dataset, batch_size=None, shuffle=True):
             batch_indices = indices[i*batch_size: (i+1)*batch_size]
             batch = [dataset[x] for x in batch_indices]
             xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
-            ys = torch.Tensor([x['label'] for x in batch])
+            if not predict:
+                ys = torch.Tensor([x['label'] for x in batch])
+            else:
+                ys = None
             yield xs, ys
     else:
         batch = dataset
         xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
-        ys = torch.Tensor([x['label'] for x in batch])
+        if not predict:
+            ys = torch.Tensor([x['label'] for x in batch])
+        else:
+            ys = None
         yield xs, ys
 
 

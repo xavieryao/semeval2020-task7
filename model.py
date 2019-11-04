@@ -2,7 +2,9 @@ from torch import nn
 from torch.nn import functional as F
 import torch
 from torch.utils.tensorboard import SummaryWriter
-
+from dataloader import DataLoader, HeadlineDataset
+import subprocess
+import os
 
 
 class RMSELoss(torch.nn.Module):
@@ -15,25 +17,28 @@ class RMSELoss(torch.nn.Module):
         return loss
 
 
-class LSTMBaselineModel(nn.Module):
+class LSTMWithDropout(nn.Module):
+    def __init__(self, input_size, hidden_size, dropout):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.dropout = dropout
+
+        self.cell = nn.LSTMCell(input_size=input_size, hidden_size=hidden_size)
+
+    def forward(self, x, training):
+        seq_len = x.shape()[0]
+        h, c = self.cell(x[0])
+        h = F.dropout(h, self.dropout, training=training)
+        for i in range(1, seq_len):
+            h, c = self.cell(x[i], (h, c))
+            h = F.dropout(h, self.dropout, training=training)
+        return h
+
+
+class SavableModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.lstm = nn.LSTM(input_size=300, hidden_size=16)
-        self.linear1 = nn.Linear(16, 64)
-        self.linear2 = nn.Linear(64, 1)
-
-    def forward(self, x):
-        _, (x, _) = self.lstm(x)  # take the last hidden state
-        x = x.squeeze()
-        x = F.dropout(x, 0.5)
-        x = self.linear1(x)
-        x = F.relu(x)
-        x = F.dropout(x, 0.5)
-
-        # predict the score
-        x = self.linear2(x)
-        x = 4 * torch.sigmoid(x)  # normalize it to [0, 4]
-        return x.squeeze()
 
     def save(self, path):
         torch.save(self.state_dict(), path)
@@ -42,11 +47,32 @@ class LSTMBaselineModel(nn.Module):
         self.load_state_dict(torch.load(path))
 
 
+class LSTMBaselineModel(SavableModel):
+    def __init__(self, config={}):
+        super().__init__()
+        self.config = config
+        self.lstm = LSTMWithDropout(input_size=300, hidden_size=16, dropout=0.5)
+        self.linear1 = nn.Linear(16, 64)
+        self.linear2 = nn.Linear(64, 1)
+
+    def forward(self, x, training=True):
+        _, (x, _) = self.lstm(x, training=training)  # take the last hidden state
+        x = x.squeeze()
+        x = F.dropout(x, 0.5, training=training)
+        x = self.linear1(x)
+        x = F.relu(x)
+        x = F.dropout(x, 0.5, training=training)
+
+        # predict the score
+        x = self.linear2(x)
+        x = 4 * torch.sigmoid(x)  # normalize it to [0, 4]
+        return x.squeeze()
+
+
 def train():
     train_writer = SummaryWriter('runs/simple_lstm_exp_1_train')
     dev_writer = SummaryWriter('runs/simple_lstm_exp_1_dev')
 
-    from dataloader import DataLoader, HeadlineDataset
     print('Loading data')
     train_dataset = HeadlineDataset('training')
     dev_dataset = HeadlineDataset('dev')
@@ -61,6 +87,8 @@ def train():
         for i, data in enumerate(trainloader):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
+            if len(labels) <= 1:
+                continue
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -93,5 +121,27 @@ def train():
     print('Finished Training')
 
 
+def predict():
+    from csv import writer
+    test_dataset = HeadlineDataset('test')
+    test_loader = DataLoader(test_dataset, shuffle=False, predict=True)
+    net = LSTMBaselineModel()
+    net.load('checkpoints/6.pyt')
+    xs, _ = next(test_loader)
+    y_pred = net(xs, training=False)
+    with open('data/task-1-output.csv', 'w') as f:
+        output_writer = writer(f)
+        output_writer.writerow(('id', 'pred'))
+        for row, pred in zip(test_dataset, y_pred):
+            output_writer.writerow((row['id'], pred.item()))
+    os.chdir('data')
+    subprocess.run(['zip', 'task-1-output.zip', 'task-1-output.csv'])
+    os.chdir('..')
+
+
 if __name__ == '__main__':
-    train()
+    import sys
+    if 'pred' in sys.argv:
+        predict()
+    else:
+        train()
