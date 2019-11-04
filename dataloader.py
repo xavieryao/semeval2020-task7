@@ -41,7 +41,18 @@ class HeadlineDataset(Dataset):
         return res
 
 
-def DataLoader(dataset, batch_size=None, shuffle=True, predict=False):
+def DataLoader(dataset, batch_size=None, shuffle=True, predict=False, pad_or_pack='pad'):
+    def prepare_batch(batch):
+        if pad_or_pack == 'pack':
+            xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
+        else:  # pad
+            xs = torch.nn.utils.rnn.pad_sequence([x['edited_headline_embedding'] for x in batch])
+        if not predict:
+            ys = torch.Tensor([x['label'] for x in batch])
+        else:
+            ys = None
+        return xs, ys
+
     indices = list(range(len(dataset)))
     if shuffle:
         random.shuffle(indices)
@@ -49,20 +60,12 @@ def DataLoader(dataset, batch_size=None, shuffle=True, predict=False):
         for i in range((len(dataset) + batch_size - 1) // batch_size):
             batch_indices = indices[i*batch_size: (i+1)*batch_size]
             batch = [dataset[x] for x in batch_indices]
-            xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
-            if not predict:
-                ys = torch.Tensor([x['label'] for x in batch])
-            else:
-                ys = None
-            yield xs, ys
-    else:
+            yield prepare_batch(batch)
+    elif not shuffle:
         batch = dataset
-        xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
-        if not predict:
-            ys = torch.Tensor([x['label'] for x in batch])
-        else:
-            ys = None
-        yield xs, ys
+    else:
+        batch = [dataset[x] for x in indices]
+    yield prepare_batch(batch)
 
 
 if __name__ == '__main__':

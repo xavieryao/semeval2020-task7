@@ -27,7 +27,7 @@ class LSTMWithDropout(nn.Module):
         self.cell = nn.LSTMCell(input_size=input_size, hidden_size=hidden_size)
 
     def forward(self, x, training):
-        seq_len = x.shape()[0]
+        seq_len = x.shape[0]
         h, c = self.cell(x[0])
         h = F.dropout(h, self.dropout, training=training)
         for i in range(1, seq_len):
@@ -56,9 +56,8 @@ class LSTMBaselineModel(SavableModel):
         self.linear2 = nn.Linear(64, 1)
 
     def forward(self, x, training=True):
-        _, (x, _) = self.lstm(x, training=training)  # take the last hidden state
+        x = self.lstm(x, training=training)  # take the last hidden state
         x = x.squeeze()
-        x = F.dropout(x, 0.5, training=training)
         x = self.linear1(x)
         x = F.relu(x)
         x = F.dropout(x, 0.5, training=training)
@@ -84,6 +83,7 @@ def train():
     for epoch in range(30):  # loop over the dataset multiple times
         running_loss = 0.0
         trainloader = DataLoader(train_dataset, 8)
+        num_batches = len(train_dataset) // 8
         for i, data in enumerate(trainloader):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
@@ -101,19 +101,19 @@ def train():
 
             # print statistics
             running_loss += loss.item()
-            if i % 20 == 19:  # print every 2000 mini-batches
+            if i % 20 == 19:  # print every 20 mini-batches
                 print('[%d, %5d]     loss: %.6f' %
                       (epoch + 1, i + 1, running_loss / 20))
-                train_writer.add_scalar('epoch', epoch + 1, epoch * len(train_dataset) + i)
-                train_writer.add_scalar('loss', running_loss / 20, epoch * len(train_dataset) + i)
+                train_writer.add_scalar('epoch', epoch + 1, epoch * len(train_dataset) + min(i * 8, len(train_dataset)))
+                train_writer.add_scalar('loss', running_loss / 20, epoch * len(train_dataset) + min(i * 8, len(train_dataset)))
                 running_loss = 0.0
             if i % 50 == 49:  # validate
                 dev_loader = DataLoader(dev_dataset)
                 dev_xs, dev_ys = next(dev_loader)
-                val_outputs = net(dev_xs)
+                val_outputs = net(dev_xs, training=False)
                 val_loss = criterion(val_outputs, dev_ys)
                 print('[%d, %5d] val loss: %.6f' % (epoch + 1, i + 1, val_loss))
-                dev_writer.add_scalar('loss', val_loss, epoch * len(train_dataset) + i)
+                dev_writer.add_scalar('loss', val_loss, epoch * len(train_dataset) + + min(i * 8, len(train_dataset)))
         # save checkpoint
         net.save("checkpoints/{}.pyt".format(epoch+1))
     train_writer.close()
