@@ -53,9 +53,9 @@ def DataLoader(dataset, batch_size=None, shuffle=True, predict=False, pad_or_pac
             if task == 'regression':
                 ys = torch.Tensor([x['label'] for x in batch])
             elif task == '5-classification':
-                ys = torch.LongTensor([x['5bin-label'] for x in batch])
+                ys = torch.LongTensor([x['5bin-label'] for x in batch]).squeeze()
             elif task == '10-classification':
-                ys = torch.LongTensor([x['10bin-label'] for x in batch])
+                ys = torch.LongTensor([x['10bin-label'] for x in batch]).squeeze()
             else:
                 raise ValueError("Invalid task")
         else:

@@ -6,6 +6,14 @@ from dataloader import DataLoader, HeadlineDataset
 import subprocess
 import os
 from configs import *
+import json
+
+
+# load bin stats
+with open('data/5bin-stat.json') as f:
+    bin_stat_5 = json.load(f)
+with open('data/10bin-stat.json') as f:
+    bin_stat_10 = json.load(f)
 
 
 class RMSELoss(torch.nn.Module):
@@ -67,7 +75,12 @@ class LSTMBaselineModel(SavableModel):
         self.lstm = LSTMWithStepwiseDropout(input_size=300, hidden_size=config['hidden'], dropout=config['dropout'])
         self.linear1 = nn.Linear(config['hidden'], config['linear'])
         self.linear_norm = nn.BatchNorm1d(config['linear'])
-        self.linear2 = nn.Linear(config['linear'], 1)
+        if config['task'] == 'regression':
+            self.linear2 = nn.Linear(config['linear'], 1)
+        elif config['task'] == '5-classification':
+            self.linear2 = nn.Linear(config['linear'], 5)
+        elif config['task'] == '10-classification':
+            self.linear2 = nn.Linear(config['linear'], 10)
 
     def forward(self, x, training=True):
         x = self.lstm(x, training=training)  # take the last hidden state
@@ -80,8 +93,26 @@ class LSTMBaselineModel(SavableModel):
 
         # predict the score
         x = self.linear2(x)
-        x = 3 * torch.sigmoid(x)  # normalize it to [0, 3]
-        return x.squeeze()
+        if config['task'] == 'regression':
+            x = 3 * torch.sigmoid(x)  # normalize it to [0, 3]
+            x = x.squeeze()
+        return x
+
+
+def calculate_val_rmse(val_set, outputs, task):
+    # calculate validation RMSE for bin-classification
+    if task[0] == '5':
+        assignments = [x['avg'] for x in bin_stat_5]
+    else:
+        assignments = [x['avg'] for x in bin_stat_10]
+    pred_bins = torch.argmax(outputs, dim=1)
+    loss = 0.
+    for bin_idx, row in zip(pred_bins, val_set):
+        y_pred = assignments[bin_idx]
+        y_true = row['label']
+        loss += (y_pred - y_true) ** 2
+    loss = (loss / len(val_set)) ** 0.5
+    return loss
 
 
 def train(config):
@@ -94,13 +125,16 @@ def train(config):
 
     net = LSTMBaselineModel(config)
     print(net)
-    criterion = RMSELoss()
+    if config['task'] == 'regression':
+        criterion = RMSELoss()
+    else:  # config['task'] == 'B-classification'
+        criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(net.parameters())
 
-    best_val_loss = float('+inf')
+    best_val_rmse = float('+inf')
     for epoch in range(30):  # loop over the dataset multiple times
         running_loss = 0.0
-        trainloader = DataLoader(train_dataset, 8)
+        trainloader = DataLoader(train_dataset, 8, task=config['task'])
         for i, data in enumerate(trainloader):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
@@ -125,17 +159,22 @@ def train(config):
                 train_writer.add_scalar('loss', running_loss / 20, epoch * len(train_dataset) + min(i * 8, len(train_dataset)))
                 running_loss = 0.0
             if i % 50 == 49:  # validate
-                dev_loader = DataLoader(dev_dataset)
+                dev_loader = DataLoader(dev_dataset, task=config['task'])
                 dev_xs, dev_ys = next(dev_loader)
                 val_outputs = net(dev_xs, training=False)
                 val_loss = criterion(val_outputs, dev_ys)
                 print('[%d, %5d] val loss: %.6f' % (epoch + 1, i + 1, val_loss))
                 dev_writer.add_scalar('loss', val_loss, epoch * len(train_dataset) + + min(i * 8, len(train_dataset)))
 
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
+                if config['task'] == 'regression':
+                    val_rmse = val_loss
+                else:
+                    val_rmse = calculate_val_rmse(dev_dataset, val_outputs, config['task'])
+
+                if val_rmse < best_val_rmse:
+                    best_val_rmse = val_rmse
                     net.save("checkpoints/best.pyt".format(epoch+1))
-                    dev_writer.add_scalar('best val loss', val_loss, epoch * len(train_dataset) + + min(i * 8, len(train_dataset)))
+                    dev_writer.add_scalar('best val rmse', val_rmse, epoch * len(train_dataset) + + min(i * 8, len(train_dataset)))
         # save checkpoint
         net.save("checkpoints/{}.pyt".format(epoch+1))
     train_writer.close()
@@ -146,7 +185,7 @@ def train(config):
 def predict(config):
     from csv import writer
     test_dataset = HeadlineDataset('test')
-    test_loader = DataLoader(test_dataset, shuffle=False, predict=True)
+    test_loader = DataLoader(test_dataset, shuffle=False, predict=True, task=config['task'])
     net = LSTMBaselineModel(config)
     net.load('checkpoints/best.pyt')
     xs, _ = next(test_loader)
@@ -162,7 +201,7 @@ def predict(config):
 
 
 if __name__ == '__main__':
-    config = original_lstm_with_norm
+    config = original_lstm_5bin
     import shutil
     try:
         shutil.rmtree('runs')
