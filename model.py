@@ -53,7 +53,6 @@ class LSTMBaselineModel(SavableModel):
         super().__init__()
         self.config = config
         self.lstm = LSTMWithDropout(input_size=300, hidden_size=config['hidden'], dropout=config['dropout'])
-        self.lstm_norm = nn.BatchNorm1d(config['hidden'])
         self.linear1 = nn.Linear(config['hidden'], config['linear'])
         self.linear_norm = nn.BatchNorm1d(config['linear'])
         self.linear2 = nn.Linear(config['linear'], 1)
@@ -61,8 +60,6 @@ class LSTMBaselineModel(SavableModel):
     def forward(self, x, training=True):
         x = self.lstm(x, training=training)  # take the last hidden state
         x = x.squeeze()
-        if self.config['norm']:
-            x = self.lstm_norm(x)
         x = self.linear1(x)
         if self.config['norm']:
             x = self.linear_norm(x)
@@ -75,7 +72,7 @@ class LSTMBaselineModel(SavableModel):
         return x.squeeze()
 
 
-def train():
+def train(config):
     train_writer = SummaryWriter('runs/simple_lstm_exp_1_train')
     dev_writer = SummaryWriter('runs/simple_lstm_exp_1_dev')
 
@@ -83,10 +80,11 @@ def train():
     train_dataset = HeadlineDataset('training')
     dev_dataset = HeadlineDataset('dev')
 
-    net = LSTMBaselineModel(original_lstm)
+    net = LSTMBaselineModel(config)
     criterion = RMSELoss()
     optimizer = torch.optim.Adam(net.parameters())
 
+    best_val_loss = float('+inf')
     for epoch in range(30):  # loop over the dataset multiple times
         running_loss = 0.0
         trainloader = DataLoader(train_dataset, 8)
@@ -120,6 +118,11 @@ def train():
                 val_loss = criterion(val_outputs, dev_ys)
                 print('[%d, %5d] val loss: %.6f' % (epoch + 1, i + 1, val_loss))
                 dev_writer.add_scalar('loss', val_loss, epoch * len(train_dataset) + + min(i * 8, len(train_dataset)))
+
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    net.save("checkpoints/best.pyt".format(epoch+1))
+                    dev_writer.add_scalar('best val loss', val_loss, epoch * len(train_dataset) + + min(i * 8, len(train_dataset)))
         # save checkpoint
         net.save("checkpoints/{}.pyt".format(epoch+1))
     train_writer.close()
@@ -127,12 +130,12 @@ def train():
     print('Finished Training')
 
 
-def predict():
+def predict(config):
     from csv import writer
     test_dataset = HeadlineDataset('test')
     test_loader = DataLoader(test_dataset, shuffle=False, predict=True)
-    net = LSTMBaselineModel(larger_lstm)
-    net.load('checkpoints/7.pyt')
+    net = LSTMBaselineModel(config)
+    net.load('checkpoints/best.pyt')
     xs, _ = next(test_loader)
     y_pred = net(xs, training=False)
     with open('data/task-1-output.csv', 'w') as f:
@@ -146,8 +149,15 @@ def predict():
 
 
 if __name__ == '__main__':
+    config = larger_lstm
+    import shutil
+    try:
+        shutil.rmtree('runs')
+    except:
+        pass
+
     import sys
     if 'pred' in sys.argv:
-        predict()
+        predict(config)
     else:
-        train()
+        train(config)

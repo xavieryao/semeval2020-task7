@@ -6,8 +6,8 @@ original_lstm = {
 }
 
 larger_lstm = {
-    'hidden': 32,
-    'dropout': 0.2,
+    'hidden': 64,
+    'dropout': 0.5,
     'linear': 64,
     'norm': True
 }
