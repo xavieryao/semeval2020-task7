@@ -18,23 +18,32 @@ class RMSELoss(torch.nn.Module):
         return loss
 
 
-class LSTMWithDropout(nn.Module):
+class LSTMWithStepwiseDropout(nn.Module):
     def __init__(self, input_size, hidden_size, dropout):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
 
-        self.cell = nn.LSTMCell(input_size=input_size, hidden_size=hidden_size)
+        if self.dropout == 0:
+            self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size)
+            self.cell = None
+        else:
+            self.lstm = None
+            self.cell = nn.LSTMCell(input_size=input_size, hidden_size=hidden_size)
 
     def forward(self, x, training):
         seq_len = x.shape[0]
-        h, c = self.cell(x[0])
-        h = F.dropout(h, self.dropout, training=training)
-        for i in range(1, seq_len):
-            h, c = self.cell(x[i], (h, c))
+        if self.cell:
+            h, c = self.cell(x[0])
             h = F.dropout(h, self.dropout, training=training)
-        return h
+            for i in range(1, seq_len):
+                h, c = self.cell(x[i], (h, c))
+                h = F.dropout(h, self.dropout, training=training)
+            return h
+        else:
+            _, (h, _) = self.lstm(x)
+            return h
 
 
 class SavableModel(nn.Module):
@@ -52,7 +61,7 @@ class LSTMBaselineModel(SavableModel):
     def __init__(self, config=None):
         super().__init__()
         self.config = config
-        self.lstm = LSTMWithDropout(input_size=300, hidden_size=config['hidden'], dropout=config['dropout'])
+        self.lstm = LSTMWithStepwiseDropout(input_size=300, hidden_size=config['hidden'], dropout=config['dropout'])
         self.linear1 = nn.Linear(config['hidden'], config['linear'])
         self.linear_norm = nn.BatchNorm1d(config['linear'])
         self.linear2 = nn.Linear(config['linear'], 1)
