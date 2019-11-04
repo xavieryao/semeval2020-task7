@@ -61,11 +61,13 @@ class LSTMBaselineModel(SavableModel):
     def forward(self, x, training=True):
         x = self.lstm(x, training=training)  # take the last hidden state
         x = x.squeeze()
-        x = self.lstm_norm(x)
+        if self.config['norm']:
+            x = self.lstm_norm(x)
         x = self.linear1(x)
+        if self.config['norm']:
+            x = self.linear_norm(x)
         x = F.relu(x)
         x = F.dropout(x, self.config['dropout'], training=training)
-        x = self.linear_norm(x)
 
         # predict the score
         x = self.linear2(x)
@@ -81,7 +83,7 @@ def train():
     train_dataset = HeadlineDataset('training')
     dev_dataset = HeadlineDataset('dev')
 
-    net = LSTMBaselineModel(larger_lstm)
+    net = LSTMBaselineModel(original_lstm)
     criterion = RMSELoss()
     optimizer = torch.optim.Adam(net.parameters())
 
