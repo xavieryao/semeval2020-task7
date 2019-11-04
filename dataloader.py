@@ -38,13 +38,19 @@ class HeadlineDataset(Dataset):
         }
 
 
-def DataLoader(dataset, batch_size, shuffle=True):
+def DataLoader(dataset, batch_size=None, shuffle=True):
     indices = list(range(len(dataset)))
     if shuffle:
         random.shuffle(indices)
-    for i in range((len(dataset) + batch_size - 1) // batch_size):
-        batch_indices = indices[i*batch_size: (i+1)*batch_size]
-        batch = [dataset[x] for x in batch_indices]
+    if batch_size:
+        for i in range((len(dataset) + batch_size - 1) // batch_size):
+            batch_indices = indices[i*batch_size: (i+1)*batch_size]
+            batch = [dataset[x] for x in batch_indices]
+            xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
+            ys = torch.Tensor([x['label'] for x in batch])
+            yield xs, ys
+    else:
+        batch = dataset
         xs = torch.nn.utils.rnn.pack_sequence([x['edited_headline_embedding'] for x in batch], enforce_sorted=False)
         ys = torch.Tensor([x['label'] for x in batch])
         yield xs, ys

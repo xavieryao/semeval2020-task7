@@ -36,7 +36,9 @@ class LSTMBaselineModel(nn.Module):
 
 def train():
     from dataloader import DataLoader, HeadlineDataset
+    print('Loading data')
     train_dataset = HeadlineDataset('training')
+    dev_dataset = HeadlineDataset('dev')
 
     net = LSTMBaselineModel()
     criterion = RMSELoss()
@@ -61,9 +63,15 @@ def train():
             # print statistics
             running_loss += loss.item()
             if i % 20 == 19:  # print every 2000 mini-batches
-                print('[%d, %5d] loss: %.6f' %
-                      (epoch + 1, i + 1, running_loss / 2000))
+                print('[%d, %5d]     loss: %.6f' %
+                      (epoch + 1, i + 1, running_loss / 20))
                 running_loss = 0.0
+            if i % 50 == 49:  # validate
+                dev_loader = DataLoader(dev_dataset)
+                dev_xs, dev_ys = next(dev_loader)
+                val_outputs = net(dev_xs)
+                val_loss = criterion(val_outputs, dev_ys)
+                print('[%d, %5d] val loss: %.6f' % (epoch + 1, i + 1, val_loss))
 
     print('Finished Training')
 
