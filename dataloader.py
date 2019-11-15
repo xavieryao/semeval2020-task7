@@ -40,7 +40,7 @@ class HeadlineDataset(Dataset):
             res['label'] = float(self.rows[idx]['meanGrade'])
             for k, v in self.rows[idx].items():
                 if k.endswith('bin-label'):
-                    res[k] = v
+                    res[k] = int(v)
         return res
 
 
@@ -60,6 +60,8 @@ def DataLoader(dataset, batch_size=None, shuffle=True, predict=False, pad_or_pac
             elif task.endswith('classification'):
                 n_bins = task.split('-')[0]
                 ys = torch.LongTensor([x[f'{n_bins}bin-label'] for x in batch]).squeeze()
+            else:
+                raise ValueError()
         else:
             ys = None
         return xs, ys

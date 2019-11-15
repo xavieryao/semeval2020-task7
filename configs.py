@@ -38,10 +38,10 @@ original_lstm_5bin = {
     'task': '5-classification'
 }
 
-original_lstm_3bin = {
+original_model = {
     'hidden': 16,
     'dropout': 0.5,
-    'linear': 64,
+    'linear': 16,
     'norm': False,
     'task': '3-classification'
 }

@@ -34,7 +34,7 @@ class LSTMWithStepwiseDropout(nn.Module):
         self.hidden_size = hidden_size
         self.dropout = dropout
 
-        if self.dropout == 0:
+        if self.dropout == 0 or config.get('skip_lstm_dropout', False):
             self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size)
             self.cell = None
         else:
@@ -200,7 +200,7 @@ def predict(config):
 
 
 if __name__ == '__main__':
-    config = original_lstm_3bin
+    config = original_model
     import shutil
     try:
         shutil.rmtree('runs')
