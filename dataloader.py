@@ -4,6 +4,7 @@ import random
 import torch
 import pickle
 from torch.utils.data import Dataset
+from transformers import BertTokenizer
 
 
 class HeadlineDataset(Dataset):
@@ -24,17 +25,26 @@ class HeadlineDataset(Dataset):
         edited = re.sub(r"<.+/>", row['edit'], orig)
         return edited
 
+    @staticmethod
+    def get_orig_text(row):
+        orig = row['original']
+        edited = re.sub(r"<(.+)/>", r"\g<1>", orig)
+        return edited
+
     def __len__(self):
         return len(self.rows)
 
     def __getitem__(self, idx):
+        row = self.rows[idx]
         headline = self.get_edited_text(self.rows[idx])
         word_vectors = []
         for word in headline.split():
             word_vectors.append(self.glove_embeddings.get(word, self.glove_embeddings['<UNK>']))
         res = {
             'id': self.rows[idx]['id'],
-            'edited_headline_embedding': torch.stack(word_vectors)
+            'edited_headline_embedding': torch.stack(word_vectors),
+            'orig_text': self.get_orig_text(row),
+            'edited_text': headline
         }
         if 'meanGrade' in self.rows[idx]:
             res['label'] = float(self.rows[idx]['meanGrade'])
@@ -42,6 +52,35 @@ class HeadlineDataset(Dataset):
                 if k.endswith('bin-label'):
                     res[k] = int(v)
         return res
+
+
+def BertDataLoader(dataset, batch_size, shuffle=True):
+    indices = list(range(len(dataset)))
+    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    if shuffle:
+        random.shuffle(indices)
+    for i in range((len(dataset) + batch_size - 1) // batch_size):
+        batch_indices = indices[i * batch_size: (i + 1) * batch_size]
+        batch = [dataset[x] for x in batch_indices]
+        xs = []
+        segments = []
+        ys = []
+        for sample in batch:
+            sample_segments = []
+            orig_sent = '[CLS] ' + sample['orig_text'] + ' [SEP]'
+            orig_tokens = tokenizer.encode(orig_sent)
+            sample_segments.extend([0] * len(orig_tokens))
+
+            edited_sent = ' ' + sample['edited_text'] + ' [SEP]'
+            edited_tokens = tokenizer.encode(edited_sent)
+            sample_segments.extend([1] * len(edited_tokens))
+            assert(len(orig_tokens) + len(edited_tokens) == len(sample_segments))
+            input_ids = torch.LongTensor(orig_tokens + edited_tokens)
+            xs.append(input_ids)
+            segments.append(sample_segments)
+            if 'label' in sample:
+                ys.append(sample['label'])
+        yield xs, segments, ys
 
 
 def DataLoader(dataset, batch_size=None, shuffle=True, predict=False, pad_or_pack='pad', task='regression'):
