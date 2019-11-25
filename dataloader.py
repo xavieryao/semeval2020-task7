@@ -64,23 +64,50 @@ def BertDataLoader(dataset, batch_size, shuffle=True):
         batch = [dataset[x] for x in batch_indices]
         xs = []
         segments = []
+        masks = []
         ys = []
+
+        MAX_LEN = 80 
         for sample in batch:
             sample_segments = []
             orig_sent = '[CLS] ' + sample['orig_text'] + ' [SEP]'
-            orig_tokens = tokenizer.encode(orig_sent)
+            orig_tokens = tokenizer.encode(orig_sent, add_special_tokens=False)
             sample_segments.extend([0] * len(orig_tokens))
+            mask = [1] * len(orig_tokens)
+            mask[0] = 0  # [CLS]
+            mask[-1] = 0  # [SEP]
 
             edited_sent = ' ' + sample['edited_text'] + ' [SEP]'
-            edited_tokens = tokenizer.encode(edited_sent)
+            edited_tokens = tokenizer.encode(edited_sent, add_special_tokens=False)
             sample_segments.extend([1] * len(edited_tokens))
-            assert(len(orig_tokens) + len(edited_tokens) == len(sample_segments))
-            input_ids = torch.LongTensor(orig_tokens + edited_tokens)
+            mask.extend([1] * len(edited_tokens))
+            mask[-1] = 0  # [SEP]
+            assert(len(orig_tokens) + len(edited_tokens) == len(sample_segments) == len(mask))
+            
+            # padding
+            input_ids = orig_tokens + edited_tokens
+            if len(input_ids) > MAX_LEN:
+                input_ids = input_ids[:MAX_LEN]
+                mask = mask[:MAX_LEN]
+                sample_segments = sample_segments[:MAX_LEN]
+            else:
+                pad = MAX_LEN - len(input_ids)
+                input_ids.extend([0] * pad)
+                sample_segments.extend([0] * pad)
+                mask.extend([0] * pad)
+
+
+            input_ids = torch.LongTensor(input_ids)
             xs.append(input_ids)
-            segments.append(sample_segments)
+            segments.append(torch.LongTensor(sample_segments))
+            masks.append(torch.LongTensor(mask))
             if 'label' in sample:
                 ys.append(sample['label'])
-        yield xs, segments, ys
+        xs = torch.stack(xs)
+        segments = torch.stack(segments)
+        masks = torch.stack(masks)
+        ys = torch.Tensor(ys)
+        yield xs, segments, masks, ys
 
 
 def DataLoader(dataset, batch_size=None, shuffle=True, predict=False, pad_or_pack='pad', task='regression'):
