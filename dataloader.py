@@ -6,6 +6,7 @@ import pickle
 from torch.utils.data import Dataset
 from transformers import BertTokenizer
 
+tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
 
 class HeadlineDataset(Dataset):
     def __init__(self, dataset='training'):
@@ -60,12 +61,7 @@ class HeadlineDataset(Dataset):
                     res[k] = int(v)
         return res
 
-
-def BertDataLoader(dataset, batch_size, shuffle=True, pair=False):
-    indices = list(range(len(dataset)))
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-
-    def convert_sent(sentence):
+def convert_sent(sentence):
         MAX_LEN = 80 
         sample_segments = []
         sentence = '[CLS] ' + sentence + ' [SEP]'
@@ -88,6 +84,8 @@ def BertDataLoader(dataset, batch_size, shuffle=True, pair=False):
             mask.extend([0] * pad)
         return torch.LongTensor(input_ids), torch.LongTensor(sample_segments), torch.LongTensor(mask)
 
+def BertDataLoader(dataset, batch_size, shuffle=True, pair=False):
+    indices = list(range(len(dataset)))
     if shuffle:
         random.shuffle(indices)
     for i in range((len(dataset) + batch_size - 1) // batch_size):

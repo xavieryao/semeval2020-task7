@@ -8,6 +8,7 @@ import os
 from configs import *
 import json
 from glob import glob
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 # load bin stats
@@ -121,6 +122,7 @@ def train(config):
     dev_dataset = HeadlineDataset('dev')
 
     net = LSTMBaselineModel(config)
+    net = net.to(device)
     print(net)
     if config['task'] == 'regression':
         criterion = RMSELoss()
@@ -131,13 +133,16 @@ def train(config):
     best_val_rmse = float('+inf')
     for epoch in range(300):  # loop over the dataset multiple times
         running_loss = 0.0
-        trainloader = DataLoader(train_dataset, 8, task=config['task'])
+        trainloader = DataLoader(train_dataset, 64, task=config['task'])
         for i, data in enumerate(trainloader):
+            net.train()
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
             if len(labels.shape) == 0 or len(labels) <= 1:
                 continue
-
+            
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             # zero the parameter gradients
             optimizer.zero_grad()
 
@@ -155,9 +160,12 @@ def train(config):
                 train_writer.add_scalar('epoch', epoch + 1, epoch * len(train_dataset) + min(i * 8, len(train_dataset)))
                 train_writer.add_scalar('loss', running_loss / 20, epoch * len(train_dataset) + min(i * 8, len(train_dataset)))
                 running_loss = 0.0
-            if i % 50 == 49:  # validate
+            if i % 20 == 19:  # validate
+                net.eval()
                 dev_loader = DataLoader(dev_dataset, task=config['task'], shuffle=False)
                 dev_xs, dev_ys = next(dev_loader)
+                dev_xs = dev_xs.to(device)
+                dev_ys = dev_ys.to(device)
                 val_outputs = net(dev_xs, training=False)
                 val_loss = criterion(val_outputs, dev_ys)
                 print('[%d, %5d] val loss: %.6f' % (epoch + 1, i + 1, val_loss))
@@ -183,13 +191,14 @@ def train(config):
 
 def predict(config):
     from csv import writer
-    test_dataset = HeadlineDataset('test')
+    test_dataset = HeadlineDataset('training')
     test_loader = DataLoader(test_dataset, shuffle=False, predict=True, task=config['task'])
     net = LSTMBaselineModel(config)
     net.load('checkpoints/best.pyt')
+    net.eval()
     xs, _ = next(test_loader)
     y_pred = net(xs, training=False)
-    with open('data/task-1-output.csv', 'w') as f:
+    with open('data/train-lstm.csv', 'w') as f:
         output_writer = writer(f)
         output_writer.writerow(('id', 'pred'))
         for row, pred in zip(test_dataset, y_pred):
@@ -200,7 +209,7 @@ def predict(config):
 
 
 if __name__ == '__main__':
-    config = original_model
+    config = larger_lstm
     import shutil
     try:
         shutil.rmtree('runs')
