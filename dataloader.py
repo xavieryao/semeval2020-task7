@@ -31,6 +31,11 @@ class HeadlineDataset(Dataset):
         edited = re.sub(r"<(.+)/>", r"\g<1>", orig)
         return edited
 
+    @staticmethod
+    def get_orig_phrase(row):
+        orig = row['original']
+        return re.match(r".*?<(.+)/>.*", orig).group(1).strip()
+
     def __len__(self):
         return len(self.rows)
 
@@ -44,7 +49,9 @@ class HeadlineDataset(Dataset):
             'id': self.rows[idx]['id'],
             'edited_headline_embedding': torch.stack(word_vectors),
             'orig_text': self.get_orig_text(row),
-            'edited_text': headline
+            'edited_text': headline,
+            'orig': self.get_orig_phrase(row),
+            'edit': row['edit']
         }
         if 'meanGrade' in self.rows[idx]:
             res['label'] = float(self.rows[idx]['meanGrade'])
@@ -57,6 +64,30 @@ class HeadlineDataset(Dataset):
 def BertDataLoader(dataset, batch_size, shuffle=True, pair=False):
     indices = list(range(len(dataset)))
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+
+    def convert_sent(sentence):
+        MAX_LEN = 80 
+        sample_segments = []
+        sentence = '[CLS] ' + sentence + ' [SEP]'
+        tokens = tokenizer.encode(sentence, add_special_tokens=False)
+        sample_segments.extend([0] * len(tokens))
+        mask = [1] * len(tokens)
+        mask[0] = 0  # [CLS]
+        mask[-1] = 0  # [SEP]
+        
+        # padding
+        input_ids = tokens
+        if len(input_ids) > MAX_LEN:
+            input_ids = input_ids[:MAX_LEN]
+            mask = mask[:MAX_LEN]
+            sample_segments = sample_segments[:MAX_LEN]
+        else:
+            pad = MAX_LEN - len(input_ids)
+            input_ids.extend([0] * pad)
+            sample_segments.extend([0] * pad)
+            mask.extend([0] * pad)
+        return torch.LongTensor(input_ids), torch.LongTensor(sample_segments), torch.LongTensor(mask)
+
     if shuffle:
         random.shuffle(indices)
     for i in range((len(dataset) + batch_size - 1) // batch_size):
@@ -67,43 +98,11 @@ def BertDataLoader(dataset, batch_size, shuffle=True, pair=False):
         masks = []
         ys = []
 
-        MAX_LEN = 80 
         for sample in batch:
-            sample_segments = []
-            edited_sent = '[CLS] ' + sample['edited_text'] + ' [SEP]'
-            edited_tokens = tokenizer.encode(edited_sent, add_special_tokens=False)
-            sample_segments.extend([0] * len(edited_tokens))
-            mask = [1] * len(edited_tokens)
-            mask[0] = 0  # [CLS]
-            mask[-1] = 0  # [SEP]
-
-            if pair:
-                orig_sent = ' ' + sample['orig_text'] + ' [SEP]'
-                orig_tokens = tokenizer.encode(orig_sent, add_special_tokens=False)
-                sample_segments.extend([1] * len(orig_tokens))
-                mask.extend([1] * len(orig_tokens))
-                mask[-1] = 0  # [SEP]
-                assert(len(orig_tokens) + len(edited_tokens) == len(sample_segments) == len(mask))
-            else:
-                orig_tokens = []
-            
-            # padding
-            input_ids = edited_tokens + orig_tokens
-            if len(input_ids) > MAX_LEN:
-                input_ids = input_ids[:MAX_LEN]
-                mask = mask[:MAX_LEN]
-                sample_segments = sample_segments[:MAX_LEN]
-            else:
-                pad = MAX_LEN - len(input_ids)
-                input_ids.extend([0] * pad)
-                sample_segments.extend([0] * pad)
-                mask.extend([0] * pad)
-
-
-            input_ids = torch.LongTensor(input_ids)
-            xs.append(input_ids)
-            segments.append(torch.LongTensor(sample_segments))
-            masks.append(torch.LongTensor(mask))
+            ids, sg, mask = convert_sent(sample)
+            xs.append(ids)
+            segments.append(sg)
+            masks.append(mask)
             if 'label' in sample:
                 ys.append(sample['label'])
         xs = torch.stack(xs)
