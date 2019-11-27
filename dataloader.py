@@ -54,7 +54,7 @@ class HeadlineDataset(Dataset):
         return res
 
 
-def BertDataLoader(dataset, batch_size, shuffle=True):
+def BertDataLoader(dataset, batch_size, shuffle=True, pair=False):
     indices = list(range(len(dataset)))
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
     if shuffle:
@@ -70,22 +70,25 @@ def BertDataLoader(dataset, batch_size, shuffle=True):
         MAX_LEN = 80 
         for sample in batch:
             sample_segments = []
-            orig_sent = '[CLS] ' + sample['orig_text'] + ' [SEP]'
-            orig_tokens = tokenizer.encode(orig_sent, add_special_tokens=False)
-            sample_segments.extend([0] * len(orig_tokens))
-            mask = [1] * len(orig_tokens)
+            edited_sent = '[CLS] ' + sample['edited_text'] + ' [SEP]'
+            edited_tokens = tokenizer.encode(edited_sent, add_special_tokens=False)
+            sample_segments.extend([0] * len(edited_tokens))
+            mask = [1] * len(edited_tokens)
             mask[0] = 0  # [CLS]
             mask[-1] = 0  # [SEP]
 
-            edited_sent = ' ' + sample['edited_text'] + ' [SEP]'
-            edited_tokens = tokenizer.encode(edited_sent, add_special_tokens=False)
-            sample_segments.extend([1] * len(edited_tokens))
-            mask.extend([1] * len(edited_tokens))
-            mask[-1] = 0  # [SEP]
-            assert(len(orig_tokens) + len(edited_tokens) == len(sample_segments) == len(mask))
+            if pair:
+                orig_sent = ' ' + sample['orig_text'] + ' [SEP]'
+                orig_tokens = tokenizer.encode(orig_sent, add_special_tokens=False)
+                sample_segments.extend([1] * len(orig_tokens))
+                mask.extend([1] * len(orig_tokens))
+                mask[-1] = 0  # [SEP]
+                assert(len(orig_tokens) + len(edited_tokens) == len(sample_segments) == len(mask))
+            else:
+                orig_tokens = []
             
             # padding
-            input_ids = orig_tokens + edited_tokens
+            input_ids = edited_tokens + orig_tokens
             if len(input_ids) > MAX_LEN:
                 input_ids = input_ids[:MAX_LEN]
                 mask = mask[:MAX_LEN]
