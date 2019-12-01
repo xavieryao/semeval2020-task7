@@ -29,7 +29,10 @@ def get_phrase_emb(sent, phrase):
     with torch.no_grad():
         outputs = model(tokens.unsqueeze(dim=0), token_type_ids=segs.unsqueeze(dim=0))
         hidden_layer = outputs[0]
-    return hidden_layer[0][idx]
+    emb = np.zeros((768, ))
+    for i in range(len(phrase_tokens)):
+        emb += hidden_layer[0][idx+i].numpy()
+    return emb
 
 def get_phrase_rank(sent, phrase):
     tokens, segs, masks = convert_sent(sent)
@@ -41,11 +44,14 @@ def get_phrase_rank(sent, phrase):
     with torch.no_grad():
         outputs = mlm_model(tokens.unsqueeze(dim=0), token_type_ids=segs.unsqueeze(dim=0))
         predictions = outputs[0]
-        predictions = F.softmax(predictions[0][idx], dim=-1)
-    return predictions[phrase_tokens[0]]
+        scores = F.softmax(predictions[0], dim=-1)
+        ranks = []
+        for i, tk in enumerate(phrase_tokens):
+            ranks.append(scores[idx+i][tk].item())
+    return np.mean(ranks)
 
 
-train_ds = HeadlineDataset('test')
+train_ds = HeadlineDataset('dev')
 glove_embs = train_ds.glove_embeddings
 sample = train_ds[0]
 #edited_emb = get_phrase_emb(sample['edited_text'], sample['edit'])
@@ -60,8 +66,8 @@ def get_glove_emb(phrase):
     return glove_embs['<UNK>']
 
 def extract_features(sample):
-    orig_emb = get_phrase_emb(sample['orig_text'], sample['orig']).numpy()
-    edit_emb = get_phrase_emb(sample['edited_text'], sample['edit']).numpy()
+    orig_emb = get_phrase_emb(sample['orig_text'], sample['orig'])
+    edit_emb = get_phrase_emb(sample['edited_text'], sample['edit'])
     orig_score = get_phrase_rank(sample['orig_text'], sample['orig'])
     edit_score = get_phrase_rank(sample['edited_text'], sample['edit'])
 
@@ -92,5 +98,5 @@ for i in tqdm(range(len(train_ds))):
     sample = train_ds[i]
     train_features.append(extract_features(sample))
 import pickle
-with open('data/test_features.pkl', 'wb') as f:
+with open('data/dev_features.pkl', 'wb') as f:
     pickle.dump(train_features, f)

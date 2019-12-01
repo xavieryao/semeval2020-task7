@@ -97,7 +97,7 @@ def BertDataLoader(dataset, batch_size, shuffle=True, pair=False):
         ys = []
 
         for sample in batch:
-            ids, sg, mask = convert_sent(sample)
+            ids, sg, mask = convert_sent(sample['edited_text'])
             xs.append(ids)
             segments.append(sg)
             masks.append(mask)

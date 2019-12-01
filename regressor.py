@@ -8,6 +8,18 @@ from dataloader import HeadlineDataset
 from csv import writer
 import os, subprocess
 import math
+from collections import Counter
+
+
+def get_weights(ys, countings):
+    total = sum(countings.values())
+    weights = []
+    for y in ys:
+        bin_num = int(y * 5)
+        weights.append(total / countings[bin_num])
+    print(ys[:10])
+    print(weights[:10])
+    return weights
 
 
 def load_data(ds):
@@ -33,9 +45,25 @@ def load_data(ds):
 
     return Xs, Ys
 
+# grouping bins
+countings = Counter()
+for i in range(30):
+    countings[i] += 1
+dev_dataset = HeadlineDataset('dev')
+train_dataset = HeadlineDataset('training')
+for sample in dev_dataset:
+    bin_num = int(sample['label'] * 5)
+    countings[bin_num] += 1
+for sample in train_dataset:
+    bin_num = int(sample['label'] * 5)
+    countings[bin_num] += 1
+
+
 print('load data')
 Xs, Ys = load_data('train')
+train_weights = get_weights(Ys, countings)
 dev_Xs, dev_Ys = load_data('dev')
+dev_weights = get_weights(dev_Ys, countings)
 
 
 model = GradientBoostingRegressor(
@@ -46,7 +74,7 @@ model = GradientBoostingRegressor(
 )
 
 print('train')
-model.fit(Xs+dev_Xs, Ys+dev_Ys)
+model.fit(Xs, Ys, train_weights)
 print('trained')
 
 print(model.feature_importances_)

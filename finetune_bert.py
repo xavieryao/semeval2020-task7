@@ -18,17 +18,17 @@ class BertRegressionModel(SavableModel):
         super().__init__()
         self.hidden_size = 768
         self.bert = BertModel.from_pretrained('bert-base-cased')
-        self.bert.eval()
         self.linear = nn.Linear(self.hidden_size, 1024)
+        self.dropout = nn.Dropout(0.5)
         self.output = nn.Linear(1024, 1)
 
     def forward(self, x, segments, masks):
-        with torch.no_grad():
-            x = self.bert(x, token_type_ids=segments, attention_mask=masks)[0]  # cls hidden state in the last layer
-            x = torch.max(x, dim=-2)[0]
-            x = torch.tanh(x)
+        x = self.bert(x, token_type_ids=segments, attention_mask=masks)[0]  # cls hidden state in the last layer
+        x = torch.max(x, dim=-2)[0]
+        x = torch.tanh(x)
         x = self.linear(x)
         x = nn.functional.relu(x)
+        x = self.dropout(x)
         x = self.output(x)
         x = 3 * torch.sigmoid(x)  # normalize it to [0, 3]
         x = x.squeeze()
@@ -46,7 +46,7 @@ def train(model: nn.Module):
         pass
 
     TRAIN_LOG_FREQ = 10
-    DEV_LOG_FREQ = 50
+    DEV_LOG_FREQ = 20
 
     train_writer = SummaryWriter('runs/finetune_bert_train')
     dev_writer = SummaryWriter('runs/finetune_bert_dev')
@@ -59,7 +59,7 @@ def train(model: nn.Module):
     best_rmse = float('+inf')
     for epoch in range(300):
         running_loss = 0.0
-        trainloader = BertDataLoader(train_dataset, 32, pair=False)
+        trainloader = BertDataLoader(train_dataset, 8, pair=False)
         dev_data = next(BertDataLoader(dev_dataset, len(dev_dataset), pair=False))
         for i, data in enumerate(trainloader):
             steps += len(data[0])
